@@ -6,6 +6,7 @@
   @ FilePath: /EasyMocap/easymocap/pyfitting/optimize_simple.py
 '''
 import numpy as np
+from scipy.spatial.transform import Rotation
 import torch
 from .lbfgs import LBFGS 
 from .optimize import FittingMonitor, grad_require, FittingLog
@@ -82,13 +83,22 @@ def optimizeShape(body_model, body_params, keypoints3d,
 N_BODY = 25
 N_HAND = 21
 
+def rotvec_interp(rotvec1, rotvec2, weight):
+    ang1 = Rotation.from_rotvec(rotvec1.reshape(-1, 3)).as_euler('xyz')
+    ang2 = Rotation.from_rotvec(rotvec2.reshape(-1, 3)).as_euler('xyz')
+    SN = np.sin(ang1) * weight + np.sin(ang2) * (1 - weight)
+    CS = np.cos(ang1) * weight + np.cos(ang2) * (1 - weight)
+    ang3 = np.arctan2(SN, CS)
+    rotvec3 = Rotation.from_euler('xyz', ang3).as_rotvec().reshape(rotvec1.shape)
+    return rotvec3
+
 def interp(left_value, right_value, weight, key='poses'):
     if key == 'Rh':
-        return left_value * weight + right_value * (1 - weight)
+        return rotvec_interp(left_value, right_value, weight)
     elif key == 'Th':
         return left_value * weight + right_value * (1 - weight)
     elif key == 'poses':
-        return left_value * weight + right_value * (1 - weight)
+        return rotvec_interp(left_value, right_value, weight)
 
 def get_interp_by_keypoints(keypoints):
     if len(keypoints.shape) == 3: # (nFrames, nJoints, 3)
